@@ -441,45 +441,18 @@ function TicketScanner({ products, onMatch, onClose }) {
 
   const runOCR = async (base64, mediaType) => {
     try {
-      const productList = products.map(p => `- ${p.name}${p.brand ? ` (${p.brand})` : ""}`).join("\n");
-      const prompt = `Eres un asistente que lee tickets de supermercado. Analiza esta imagen de ticket de compra y extrae TODOS los productos con sus precios y cantidades.
-
-Mi catálogo de productos conocidos:
-${productList}
-
-Responde SOLO con JSON válido, sin texto adicional, en este formato exacto:
-{
-  "items": [
-    {"name": "nombre del producto tal como aparece en ticket", "price": 00.00, "qty": 1, "matched": "nombre exacto del producto de mi catálogo si coincide, o null si no coincide"}
-  ]
-}
-
-Reglas:
-- price es el precio UNITARIO
-- qty es la cantidad comprada
-- Para matched, usa el nombre EXACTO de mi catálogo si es el mismo producto, si no pon null
-- Incluye TODOS los productos del ticket aunque no estén en mi catálogo`;
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/scan-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-              { type: "text", text: prompt }
-            ]
-          }]
+          imageBase64: base64,
+          mediaType: mediaType,
+          products: products.map(p => ({ name: p.name, brand: p.brand || "" }))
         })
       });
 
-      const data = await res.json();
-      const text = data.content?.map(c => c.text || "").join("") || "";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
+      if (!res.ok) throw new Error("Error del servidor");
+      const parsed = await res.json();
 
       const items = parsed.items.map(item => {
         const matchedProd = item.matched ? products.find(p => p.name === item.matched) : null;
