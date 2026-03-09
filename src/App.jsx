@@ -415,12 +415,12 @@ function AddStoreForm({ householdId, onSave, onClose }) {
 }
 
 // ─── TICKET SCANNER (con IA real) ─────────────────────────────────────────────
-function TicketScanner({ products, onMatch, onClose }) {
+function TicketScanner({ products, householdId, onMatch, onSaveNewProduct, onClose }) {
   const [step, setStep] = useState("upload");
   const [imgPreview, setImgPreview] = useState(null);
-  const [imgBase64, setImgBase64] = useState(null);
   const [parsedItems, setParsedItems] = useState([]);
   const [unmatched, setUnmatched] = useState([]);
+  const [savedNewProds, setSavedNewProds] = useState([]); // track saved new products
   const [newProdIdx, setNewProdIdx] = useState(0);
   const [newProdForm, setNewProdForm] = useState(null);
   const fileRef = useRef();
@@ -432,7 +432,6 @@ function TicketScanner({ products, onMatch, onClose }) {
       const dataUrl = e.target.result;
       const base64 = dataUrl.split(",")[1];
       setImgPreview(dataUrl);
-      setImgBase64(base64);
       setStep("processing");
       runOCR(base64, file.type || "image/jpeg");
     };
@@ -446,23 +445,29 @@ function TicketScanner({ products, onMatch, onClose }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageBase64: base64,
-          mediaType: mediaType,
+          mediaType,
           products: products.map(p => ({ name: p.name, brand: p.brand || "" }))
         })
       });
-
       if (!res.ok) throw new Error("Error del servidor");
       const parsed = await res.json();
 
       const items = parsed.items.map(item => {
         const matchedProd = item.matched ? products.find(p => p.name === item.matched) : null;
-        return { raw: item.name, price: parseFloat(item.price) || 0, qty: parseInt(item.qty) || 1, matched: matchedProd || null };
+        return {
+          raw: item.name,
+          price: parseFloat(item.price) || 0,
+          qty: parseInt(item.qty) || 1,
+          matched: matchedProd || null,
+          suggestedCategory: item.category || "abarrotes",
+          discount: parseFloat(item.discount) || 0,
+        };
       });
 
       const um = items.filter(i => !i.matched);
       setParsedItems(items);
       setUnmatched(um);
-      if (um.length > 0) setNewProdForm({ name: um[0].raw, brand: "", category: "abarrotes", price: um[0].price });
+      if (um.length > 0) setNewProdForm({ name: um[0].raw, brand: "", category: um[0].suggestedCategory || "abarrotes", price: um[0].price });
       setStep("results");
     } catch (e) {
       console.error(e);
@@ -470,11 +475,43 @@ function TicketScanner({ products, onMatch, onClose }) {
     }
   };
 
+  const advanceUnmatched = (save) => {
+    if (save && newProdForm) {
+      const newProd = {
+        id: genId(),
+        name: newProdForm.name,
+        brand: newProdForm.brand || "",
+        presentation: "",
+        default_qty: unmatched[newProdIdx].qty,
+        default_unit: "",
+        default_store_id: null,
+        category: newProdForm.category,
+        barcode: "",
+        avg_price: unmatched[newProdIdx].price,
+        household_id: householdId,
+      };
+      const histEntry = {
+        productId: newProd.id,
+        price: unmatched[newProdIdx].price,
+        qty: unmatched[newProdIdx].qty,
+      };
+      setSavedNewProds(p => [...p, { prod: newProd, hist: histEntry }]);
+      onSaveNewProduct(newProd); // immediately save to Supabase + state
+    }
+    const nextIdx = newProdIdx + 1;
+    if (nextIdx < unmatched.length) {
+      setNewProdIdx(nextIdx);
+      setNewProdForm({ name: unmatched[nextIdx].raw, brand: "", category: unmatched[nextIdx].suggestedCategory || "abarrotes", price: unmatched[nextIdx].price });
+    } else {
+      setNewProdForm(null);
+    }
+  };
+
   return (
     <div>
       {step === "upload" && (
         <div>
-          <p style={{ color: T.textMuted, fontSize: "13px", marginBottom: "16px" }}>Sube una foto de tu ticket. La IA leerá productos y precios automáticamente.</p>
+          <p style={{ color: T.textMuted, fontSize: "13px", marginBottom: "16px" }}>Sube una foto de tu ticket. La IA leerá productos, precios y descuentos automáticamente.</p>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
             <button onClick={() => { fileRef.current.setAttribute("capture", "environment"); fileRef.current.click(); }} style={{ background: T.card2, border: `1.5px dashed ${T.accent}55`, borderRadius: "12px", padding: "18px", cursor: "pointer", color: T.text, fontFamily: T.font, display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
@@ -492,7 +529,7 @@ function TicketScanner({ products, onMatch, onClose }) {
           {imgPreview && <img src={imgPreview} alt="" style={{ width: "100%", maxHeight: "160px", objectFit: "cover", borderRadius: "10px", marginBottom: "18px", opacity: 0.6 }} />}
           <div style={{ fontSize: "36px", marginBottom: "12px", animation: "spin 1.5s linear infinite" }}>⚙️</div>
           <div style={{ fontWeight: 700, color: T.accent }}>Leyendo ticket con IA...</div>
-          <div style={{ color: T.textMuted, fontSize: "13px", marginTop: "4px" }}>Identificando productos y precios reales</div>
+          <div style={{ color: T.textMuted, fontSize: "13px", marginTop: "4px" }}>Identificando productos, precios y descuentos</div>
         </div>
       )}
       {step === "error" && (
@@ -507,39 +544,60 @@ function TicketScanner({ products, onMatch, onClose }) {
         <div>
           {imgPreview && <img src={imgPreview} alt="" style={{ width: "100%", maxHeight: "100px", objectFit: "cover", borderRadius: "10px", marginBottom: "14px", opacity: 0.5 }} />}
           <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
-            {[{ v: parsedItems.filter(i => i.matched).length, l: "ENCONTRADOS", c: T.done }, { v: unmatched.length, l: "NUEVOS", c: T.warning }, { v: `$${parsedItems.reduce((s, i) => s + i.price * i.qty, 0).toFixed(0)}`, l: "TOTAL", c: T.accent }].map(x => (
+            {[
+              { v: parsedItems.filter(i => i.matched).length, l: "ENCONTRADOS", c: T.done },
+              { v: unmatched.length, l: "NUEVOS", c: T.warning },
+              { v: `$${parsedItems.reduce((s, i) => s + (i.price - (i.discount || 0)) * i.qty, 0).toFixed(0)}`, l: "TOTAL", c: T.accent }
+            ].map(x => (
               <div key={x.l} style={{ background: x.c + "18", border: `1px solid ${x.c}33`, borderRadius: "10px", padding: "8px", flex: 1, textAlign: "center" }}>
                 <div style={{ fontWeight: 800, fontSize: "18px", color: x.c }}>{x.v}</div>
                 <div style={{ fontSize: "9px", color: T.textMuted, fontWeight: 700 }}>{x.l}</div>
               </div>
             ))}
           </div>
+
+          {/* Matched items */}
           <div style={{ marginBottom: "12px" }}>
             <div style={{ fontSize: "11px", fontWeight: 700, color: T.textMuted, letterSpacing: "0.08em", marginBottom: "6px" }}>✅ ENCONTRADOS EN TU CATÁLOGO</div>
-            {parsedItems.filter(i => i.matched).map((item, i) => (
-              <div key={i} style={{ background: T.card2, borderRadius: "8px", padding: "8px 12px", display: "flex", justifyContent: "space-between", marginBottom: "4px", border: `1px solid ${T.done}22` }}>
-                <div><div style={{ fontWeight: 600, fontSize: "13px" }}>{item.matched.name}</div><div style={{ fontSize: "11px", color: T.textMuted }}>{item.raw}</div></div>
-                <div style={{ textAlign: "right" }}><div style={{ color: T.done, fontWeight: 800, fontSize: "13px" }}>${item.price}</div><div style={{ fontSize: "10px", color: T.textMuted }}>×{item.qty}</div></div>
-              </div>
-            ))}
+            {parsedItems.filter(i => i.matched).map((item, i) => {
+              const finalPrice = item.price - (item.discount || 0);
+              return (
+                <div key={i} style={{ background: T.card2, borderRadius: "8px", padding: "8px 12px", display: "flex", justifyContent: "space-between", marginBottom: "4px", border: `1px solid ${T.done}22` }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "13px" }}>{item.matched.name}</div>
+                    <div style={{ fontSize: "11px", color: T.textMuted }}>{item.raw}</div>
+                    {item.discount > 0 && <div style={{ fontSize: "11px", color: T.done }}>🏷️ Descuento -${item.discount.toFixed(2)}</div>}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    {item.discount > 0 && <div style={{ color: T.textMuted, fontSize: "11px", textDecoration: "line-through" }}>${item.price.toFixed(2)}</div>}
+                    <div style={{ color: T.done, fontWeight: 800, fontSize: "13px" }}>${finalPrice.toFixed(2)}</div>
+                    <div style={{ fontSize: "10px", color: T.textMuted }}>×{item.qty}</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+
+          {/* New products form */}
           {unmatched.length > 0 && newProdForm && (
             <div style={{ background: T.warning + "12", border: `1.5px solid ${T.warning}44`, borderRadius: "12px", padding: "14px", marginBottom: "12px" }}>
               <div style={{ fontSize: "11px", fontWeight: 700, color: T.warning, letterSpacing: "0.08em", marginBottom: "8px" }}>⚠️ PRODUCTO NUEVO ({newProdIdx + 1}/{unmatched.length})</div>
-              <div style={{ color: T.textMuted, fontSize: "12px", marginBottom: "10px" }}>Del ticket: <strong style={{ color: T.text }}>{unmatched[newProdIdx].raw}</strong></div>
+              <div style={{ color: T.textMuted, fontSize: "12px", marginBottom: "10px" }}>Del ticket: <strong style={{ color: T.text }}>{unmatched[newProdIdx].raw}</strong> · ${unmatched[newProdIdx].price}</div>
               <FInput label="Nombre" value={newProdForm.name} onChange={e => setNewProdForm(f => ({ ...f, name: e.target.value }))} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <FInput label="Marca" value={newProdForm.brand} onChange={e => setNewProdForm(f => ({ ...f, brand: e.target.value }))} />
+                <FInput label="Marca" placeholder="Opcional" value={newProdForm.brand} onChange={e => setNewProdForm(f => ({ ...f, brand: e.target.value }))} />
                 <FSelect label="Categoría" value={newProdForm.category} onChange={e => setNewProdForm(f => ({ ...f, category: e.target.value }))}>
                   {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
                 </FSelect>
               </div>
+              <div style={{ fontSize: "11px", color: T.accent, marginBottom: "8px" }}>💡 Categoría sugerida por IA — puedes cambiarla</div>
               <div style={{ display: "flex", gap: "6px" }}>
-                <Btn small outline color={T.textMuted} onClick={() => { if (newProdIdx < unmatched.length - 1) { setNewProdIdx(i => i + 1); setNewProdForm({ name: unmatched[newProdIdx + 1].raw, brand: "", category: "abarrotes" }); } else setNewProdForm(null); }}>Saltar</Btn>
-                <Btn small color={T.accent2} onClick={() => { if (newProdIdx < unmatched.length - 1) { setNewProdIdx(i => i + 1); setNewProdForm({ name: unmatched[newProdIdx + 1].raw, brand: "", category: "abarrotes" }); } else setNewProdForm(null); }}>Guardar →</Btn>
+                <Btn small outline color={T.textMuted} onClick={() => advanceUnmatched(false)}>Saltar</Btn>
+                <Btn small color={T.accent2} onClick={() => advanceUnmatched(true)}>💾 Guardar →</Btn>
               </div>
             </div>
           )}
+
           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
             <Btn outline color={T.textMuted} onClick={onClose}>Cancelar</Btn>
             <Btn color={T.accent} onClick={() => { onMatch(parsedItems.filter(i => i.matched)); onClose(); }}>✦ Actualizar precios</Btn>
@@ -734,7 +792,14 @@ export default function App() {
     }
   };
 
-  const handleQuickAdd = async ({ product, item, isNew }) => {
+  const handleSaveNewProduct = async (prod) => {
+    await sbInsert("products", auth.token, prod);
+    setProducts(p => [...p, prod]);
+    const hrow = { id: genId(), household_id: profile.household_id, product_id: prod.id, purchased_by: profile.id, store_id: null, qty: prod.default_qty || 1, unit: prod.default_unit || "", actual_price: prod.avg_price, purchased_at: todayISO() };
+    await sbInsert("purchase_history", auth.token, hrow);
+    setHistory(h => [hrow, ...h]);
+    showToast(`✚ ${prod.name} guardado en catálogo`, T.accent2);
+  };
     if (isNew && product) {
       await sbInsert("products", auth.token, product);
       setProducts(p => [...p, product]);
@@ -1127,7 +1192,7 @@ export default function App() {
         <QuickAddForm products={products} stores={stores} householdId={profile.household_id} onSave={handleQuickAdd} onClose={() => setModal(null)} />
       </Modal>
       <Modal open={modal === "ticket"} onClose={() => setModal(null)} title="🧾 Escanear ticket" color={T.accent3} wide>
-        <TicketScanner products={products} onMatch={handleTicketMatch} onClose={() => setModal(null)} />
+        <TicketScanner products={products} householdId={profile.household_id} onMatch={handleTicketMatch} onSaveNewProduct={handleSaveNewProduct} onClose={() => setModal(null)} />
       </Modal>
       <Modal open={modal === "addStore"} onClose={() => setModal(null)} title="🏪 Nueva tienda" color={T.accent3}>
         <AddStoreForm householdId={profile.household_id} onSave={async (store) => {
