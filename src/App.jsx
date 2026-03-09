@@ -800,6 +800,8 @@ export default function App() {
     setHistory(h => [hrow, ...h]);
     showToast(`✚ ${prod.name} guardado en catálogo`, T.accent2);
   };
+
+  const handleQuickAdd = async ({ product, item, isNew }) => {
     if (isNew && product) {
       await sbInsert("products", auth.token, product);
       setProducts(p => [...p, product]);
