@@ -160,6 +160,8 @@ function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const [name, setName] = useState("");
   const [householdName, setHouseholdName] = useState("");
   const [joinMode, setJoinMode] = useState("create");
@@ -169,6 +171,8 @@ function AuthScreen({ onAuth }) {
 
   const handle = async () => {
     setLoading(true); setMsg("");
+    if (mode === "signup" && password !== password2) { setMsg("❌ Las contraseñas no coinciden"); setLoading(false); return; }
+    if (mode === "signup" && password.length < 6) { setMsg("❌ La contraseña debe tener al menos 6 caracteres"); setLoading(false); return; }
     try {
       if (mode === "login") {
         const res = await authApi.signIn(email, password);
@@ -232,7 +236,24 @@ function AuthScreen({ onAuth }) {
             </>
           )}
           <FInput label="Email" type="email" placeholder="karla@gmail.com" value={email} onChange={e => setEmail(e.target.value)} />
-          <FInput label="Contraseña" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
+          <div style={{ marginBottom: "12px" }}>
+            <label style={{ display: "block", color: T.textMuted, fontSize: "11px", fontWeight: 700, letterSpacing: "0.1em", marginBottom: "5px", textTransform: "uppercase" }}>Contraseña</label>
+            <div style={{ position: "relative" }}>
+              <input type={showPass ? "text" : "password"} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()}
+                style={{ width: "100%", background: T.card2, border: `1.5px solid ${T.border}`, borderRadius: "10px", padding: "9px 40px 9px 12px", color: T.text, fontSize: "14px", outline: "none", boxSizing: "border-box", fontFamily: T.font }} />
+              <button onClick={() => setShowPass(p => !p)} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: "16px", color: T.textMuted }}>{showPass ? "🙈" : "👁️"}</button>
+            </div>
+          </div>
+          {mode === "signup" && (
+            <div style={{ marginBottom: "12px" }}>
+              <label style={{ display: "block", color: T.textMuted, fontSize: "11px", fontWeight: 700, letterSpacing: "0.1em", marginBottom: "5px", textTransform: "uppercase" }}>Confirmar contraseña</label>
+              <div style={{ position: "relative" }}>
+                <input type={showPass ? "text" : "password"} placeholder="••••••••" value={password2} onChange={e => setPassword2(e.target.value)}
+                  style={{ width: "100%", background: T.card2, border: `1.5px solid ${password2 && password !== password2 ? T.danger : T.border}`, borderRadius: "10px", padding: "9px 40px 9px 12px", color: T.text, fontSize: "14px", outline: "none", boxSizing: "border-box", fontFamily: T.font }} />
+                {password2 && <span style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", fontSize: "14px" }}>{password === password2 ? "✅" : "❌"}</span>}
+              </div>
+            </div>
+          )}
           {msg && <div style={{ color: msg.startsWith("✅") ? T.done : T.danger, fontSize: "13px", marginBottom: "12px", fontWeight: 600 }}>{msg}</div>}
           <Btn color={T.accent} full onClick={handle} disabled={loading}>{loading ? "⏳ Un momento..." : mode === "login" ? "→ Entrar" : "✦ Crear cuenta"}</Btn>
         </div>
@@ -359,10 +380,45 @@ function QuickAddForm({ products, stores, householdId, onSave, onClose }) {
   );
 }
 
-// ─── TICKET SCANNER ───────────────────────────────────────────────────────────
+// ─── ADD STORE FORM ───────────────────────────────────────────────────────────
+function AddStoreForm({ householdId, onSave, onClose }) {
+  const [name, setName] = useState("");
+  const [emoji, setEmoji] = useState("🏪");
+  const [color, setColor] = useState(STORE_COLORS[0]);
+  const emojis = ["🏪","🏬","🛒","🌿","🥩","🧴","🍞","🏷️","🌮","🐟"];
+
+  return (
+    <div>
+      <FInput label="Nombre *" placeholder="Walmart, Costco, HEB…" value={name} onChange={e => setName(e.target.value)} />
+      <div style={{ marginBottom: "13px" }}>
+        <label style={{ display: "block", color: T.textMuted, fontSize: "11px", fontWeight: 700, letterSpacing: "0.1em", marginBottom: "8px", textTransform: "uppercase" }}>Emoji</label>
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+          {emojis.map(em => (
+            <button key={em} onClick={() => setEmoji(em)} style={{ fontSize: "20px", padding: "6px 9px", borderRadius: "9px", cursor: "pointer", border: `2px solid ${emoji === em ? T.accent3 : "transparent"}`, background: emoji === em ? T.accent3 + "20" : T.card2 }}>{em}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginBottom: "13px" }}>
+        <label style={{ display: "block", color: T.textMuted, fontSize: "11px", fontWeight: 700, letterSpacing: "0.1em", marginBottom: "8px", textTransform: "uppercase" }}>Color</label>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {STORE_COLORS.map(c => (
+            <button key={c} onClick={() => setColor(c)} style={{ width: "28px", height: "28px", borderRadius: "50%", background: c, cursor: "pointer", border: `3px solid ${color === c ? "#fff" : "transparent"}`, outline: color === c ? `3px solid ${c}` : "none", outlineOffset: "2px" }} />
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+        <Btn outline color={T.textMuted} onClick={onClose}>Cancelar</Btn>
+        <Btn color={T.accent3} onClick={() => { if (!name.trim()) return; onSave({ id: genId(), name, emoji, color, household_id: householdId, created_at: todayISO() }); }}>✦ Guardar tienda</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ─── TICKET SCANNER (con IA real) ─────────────────────────────────────────────
 function TicketScanner({ products, onMatch, onClose }) {
   const [step, setStep] = useState("upload");
   const [imgPreview, setImgPreview] = useState(null);
+  const [imgBase64, setImgBase64] = useState(null);
   const [parsedItems, setParsedItems] = useState([]);
   const [unmatched, setUnmatched] = useState([]);
   const [newProdIdx, setNewProdIdx] = useState(0);
@@ -372,30 +428,73 @@ function TicketScanner({ products, onMatch, onClose }) {
   const handleFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => { setImgPreview(e.target.result); setStep("processing"); simulateOCR(file); };
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      const base64 = dataUrl.split(",")[1];
+      setImgPreview(dataUrl);
+      setImgBase64(base64);
+      setStep("processing");
+      runOCR(base64, file.type || "image/jpeg");
+    };
     reader.readAsDataURL(file);
   };
 
-  const simulateOCR = () => {
-    setTimeout(() => {
-      const ticketItems = [
-        { raw: "LECHE LALA 1L x2", price: 48.5, qty: 2 },
-        { raw: "AGUACATE HASS x4", price: 65.0, qty: 4 },
-        { raw: "POLLO PECHUGA 1KG", price: 125.0, qty: 1 },
-        { raw: "DETERGENTE ARIEL 1KG", price: 89.0, qty: 1 },
-        { raw: "YOGUR FAGE 500G x2", price: 37.0, qty: 2 },
-        { raw: "CEREAL FITNESS 500G", price: 68.0, qty: 1 },
-      ];
-      const matched = ticketItems.map(item => {
-        const prod = products.find(p => item.raw.toLowerCase().includes(p.name.toLowerCase().split(" ")[0]) || (p.brand && item.raw.toLowerCase().includes(p.brand.toLowerCase())));
-        return { ...item, matched: prod || null };
+  const runOCR = async (base64, mediaType) => {
+    try {
+      const productList = products.map(p => `- ${p.name}${p.brand ? ` (${p.brand})` : ""}`).join("\n");
+      const prompt = `Eres un asistente que lee tickets de supermercado. Analiza esta imagen de ticket de compra y extrae TODOS los productos con sus precios y cantidades.
+
+Mi catálogo de productos conocidos:
+${productList}
+
+Responde SOLO con JSON válido, sin texto adicional, en este formato exacto:
+{
+  "items": [
+    {"name": "nombre del producto tal como aparece en ticket", "price": 00.00, "qty": 1, "matched": "nombre exacto del producto de mi catálogo si coincide, o null si no coincide"}
+  ]
+}
+
+Reglas:
+- price es el precio UNITARIO
+- qty es la cantidad comprada
+- Para matched, usa el nombre EXACTO de mi catálogo si es el mismo producto, si no pon null
+- Incluye TODOS los productos del ticket aunque no estén en mi catálogo`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+              { type: "text", text: prompt }
+            ]
+          }]
+        })
       });
-      const um = matched.filter(i => !i.matched);
-      setParsedItems(matched);
+
+      const data = await res.json();
+      const text = data.content?.map(c => c.text || "").join("") || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+
+      const items = parsed.items.map(item => {
+        const matchedProd = item.matched ? products.find(p => p.name === item.matched) : null;
+        return { raw: item.name, price: parseFloat(item.price) || 0, qty: parseInt(item.qty) || 1, matched: matchedProd || null };
+      });
+
+      const um = items.filter(i => !i.matched);
+      setParsedItems(items);
       setUnmatched(um);
       if (um.length > 0) setNewProdForm({ name: um[0].raw, brand: "", category: "abarrotes", price: um[0].price });
       setStep("results");
-    }, 2000);
+    } catch (e) {
+      console.error(e);
+      setStep("error");
+    }
   };
 
   return (
@@ -419,8 +518,16 @@ function TicketScanner({ products, onMatch, onClose }) {
         <div style={{ textAlign: "center", padding: "28px 20px" }}>
           {imgPreview && <img src={imgPreview} alt="" style={{ width: "100%", maxHeight: "160px", objectFit: "cover", borderRadius: "10px", marginBottom: "18px", opacity: 0.6 }} />}
           <div style={{ fontSize: "36px", marginBottom: "12px", animation: "spin 1.5s linear infinite" }}>⚙️</div>
-          <div style={{ fontWeight: 700, color: T.accent }}>Leyendo ticket...</div>
-          <div style={{ color: T.textMuted, fontSize: "13px", marginTop: "4px" }}>Identificando productos y precios</div>
+          <div style={{ fontWeight: 700, color: T.accent }}>Leyendo ticket con IA...</div>
+          <div style={{ color: T.textMuted, fontSize: "13px", marginTop: "4px" }}>Identificando productos y precios reales</div>
+        </div>
+      )}
+      {step === "error" && (
+        <div style={{ textAlign: "center", padding: "28px 20px" }}>
+          <div style={{ fontSize: "36px", marginBottom: "12px" }}>❌</div>
+          <div style={{ fontWeight: 700, color: T.danger }}>No se pudo leer el ticket</div>
+          <div style={{ color: T.textMuted, fontSize: "13px", marginTop: "4px", marginBottom: "16px" }}>Asegúrate de que la imagen sea clara y legible</div>
+          <Btn color={T.accent} onClick={() => setStep("upload")}>Intentar de nuevo</Btn>
         </div>
       )}
       {step === "results" && (
@@ -435,7 +542,7 @@ function TicketScanner({ products, onMatch, onClose }) {
             ))}
           </div>
           <div style={{ marginBottom: "12px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: T.textMuted, letterSpacing: "0.08em", marginBottom: "6px" }}>✅ ENCONTRADOS</div>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: T.textMuted, letterSpacing: "0.08em", marginBottom: "6px" }}>✅ ENCONTRADOS EN TU CATÁLOGO</div>
             {parsedItems.filter(i => i.matched).map((item, i) => (
               <div key={i} style={{ background: T.card2, borderRadius: "8px", padding: "8px 12px", display: "flex", justifyContent: "space-between", marginBottom: "4px", border: `1px solid ${T.done}22` }}>
                 <div><div style={{ fontWeight: 600, fontSize: "13px" }}>{item.matched.name}</div><div style={{ fontSize: "11px", color: T.textMuted }}>{item.raw}</div></div>
@@ -892,7 +999,17 @@ export default function App() {
             {/* ── TIENDAS ── */}
             {tab === "tiendas" && (
               <div style={{ animation: "pop 0.2s ease" }}>
-                <h2 style={{ fontWeight: 800, fontSize: "22px", color: T.accent3, marginBottom: "16px" }}>Tiendas 🏪</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <h2 style={{ fontWeight: 800, fontSize: "22px", color: T.accent3 }}>Tiendas 🏪</h2>
+                  <Btn small color={T.accent3} onClick={() => setModal("addStore")}>+ Nueva tienda</Btn>
+                </div>
+                {stores.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "40px 20px", color: T.textMuted, marginBottom: "20px" }}>
+                    <div style={{ fontSize: "40px", marginBottom: "10px" }}>🏪</div>
+                    <div style={{ fontWeight: 700 }}>Sin tiendas aún</div>
+                    <div style={{ fontSize: "13px", marginTop: "4px" }}>Agrega tu primera tienda arriba</div>
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "10px", marginBottom: "24px" }}>
                   {stores.map(store => {
                     const si = pending.filter(i => i.store_id === store.id);
@@ -1038,6 +1155,14 @@ export default function App() {
       </Modal>
       <Modal open={modal === "ticket"} onClose={() => setModal(null)} title="🧾 Escanear ticket" color={T.accent3} wide>
         <TicketScanner products={products} onMatch={handleTicketMatch} onClose={() => setModal(null)} />
+      </Modal>
+      <Modal open={modal === "addStore"} onClose={() => setModal(null)} title="🏪 Nueva tienda" color={T.accent3}>
+        <AddStoreForm householdId={profile.household_id} onSave={async (store) => {
+          await sbInsert("stores", auth.token, store);
+          setStores(p => [...p, store]);
+          showToast(`🏪 ${store.name} agregada`);
+          setModal(null);
+        }} onClose={() => setModal(null)} />
       </Modal>
     </div>
   );
