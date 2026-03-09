@@ -79,9 +79,12 @@ const CATEGORIES = [
   { id: "carnes", label: "Carnes", emoji: "🥩", pasillo: 3 },
   { id: "panaderia", label: "Panadería", emoji: "🧁", pasillo: 4 },
   { id: "abarrotes", label: "Abarrotes", emoji: "🥫", pasillo: 5 },
-  { id: "congelados", label: "Congelados", emoji: "🧊", pasillo: 6 },
-  { id: "limpieza", label: "Limpieza", emoji: "🧴", pasillo: 7 },
-  { id: "otro", label: "Otro", emoji: "✨", pasillo: 8 },
+  { id: "limpieza", label: "Limpieza", emoji: "🧹", pasillo: 6 },
+  { id: "bebidas", label: "Bebidas", emoji: "🥤", pasillo: 7 },
+  { id: "congelados", label: "Congelados", emoji: "🧊", pasillo: 8 },
+  { id: "higiene", label: "Higiene Personal", emoji: "🧴", pasillo: 9 },
+  { id: "farmacia", label: "Farmacia", emoji: "💊", pasillo: 10 },
+  { id: "otro", label: "Otro", emoji: "🛍️", pasillo: 11 },
 ];
 const STORE_COLORS = ["#a8d5a2","#d4c87a","#7ab8d4","#d4a84a","#c4a8d4","#d4a8a8"];
 const STORE_EMOJIS = ["🏪","🏬","🛒","🌿","🥩","🧴","🍞","🏷️"];
@@ -716,6 +719,20 @@ export default function App() {
   const [shoppingMode, setShoppingMode] = useState(false);
   const pollRef = useRef(null);
 
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("sp_session");
+      if (saved) {
+        const { token, userId } = JSON.parse(saved);
+        if (token && userId) handleAuth({ token, userId });
+        else setLoading(false);
+      } else {
+        setLoading(false);
+      }
+    } catch (e) { setLoading(false); }
+  }, []);
+
   const showToast = (msg, color = T.accent) => { setToast({ msg, color }); setTimeout(() => setToast(null), 2500); };
 
   const loadAll = useCallback(async (token, householdId) => {
@@ -739,11 +756,30 @@ export default function App() {
   }, [auth, profile, loadAll]);
 
   const handleAuth = async ({ token, userId }) => {
+    try {
+      localStorage.setItem("sp_session", JSON.stringify({ token, userId }));
+    } catch(e) {}
     setAuth({ token, userId });
     const profiles = await sbGet("profiles", token, [`id=eq.${userId}`]);
     if (profiles[0]) setProfile(profiles[0]);
+    else setLoading(false);
   };
 
+  const handleLogout = () => {
+    try { localStorage.removeItem("sp_session"); } catch(e) {}
+    setAuth(null); setProfile(null); setProducts([]); setList([]); setHistory([]); setStores([]);
+    clearInterval(pollRef.current);
+  };
+
+  if (!auth && loading) return (
+    <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: T.font }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700;800&display=swap'); *{box-sizing:border-box;margin:0;padding:0;}`}</style>
+      <div style={{ textAlign: "center", color: T.textMuted }}>
+        <div style={{ fontSize: "48px", marginBottom: "12px" }}>🛒</div>
+        <div style={{ fontWeight: 700, color: T.accent }}>SuperPlus</div>
+      </div>
+    </div>
+  );
   if (!auth) return <AuthScreen onAuth={handleAuth} />;
   if (!profile) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: T.font }}>
@@ -888,6 +924,7 @@ export default function App() {
               </button>
               <Btn small outline color={T.accent3} onClick={() => setModal("ticket")}>🧾 Ticket</Btn>
               <Btn small outline color={T.accent} onClick={() => setShoppingMode(true)}>🛒 Ir de compras</Btn>
+              <Btn small outline color={T.danger} onClick={handleLogout}>⏏ Salir</Btn>
             </div>
           </div>
           <div style={{ display: "flex", gap: "2px", overflowX: "auto" }}>
