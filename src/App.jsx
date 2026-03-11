@@ -102,6 +102,13 @@ const STORE_EMOJIS = ["🏪","🏬","🛒","🌿","🥩","🧴","🍞","🏷️"
 
 const genId = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9);
 const todayISO = () => new Date().toISOString();
+// Devuelve true si el JWT expira en menos de 60 segundos
+const isTokenExpired = (token) => {
+  try {
+    const exp = JSON.parse(atob(token.split(".")[1])).exp;
+    return exp * 1000 < Date.now() + 60000;
+  } catch { return true; }
+};
 const daysBetween = (a, b) => Math.round(Math.abs(new Date(a) - new Date(b)) / 86400000);
 
 function predictNext(dates) {
@@ -740,6 +747,8 @@ export default function App() {
   const [filterCat, setFilterCat] = useState("all");
   const [shoppingMode, setShoppingMode] = useState(false);
   const pollRef = useRef(null);
+  const authRef = useRef(null); // siempre tiene el auth más reciente sin stale closures
+  useEffect(() => { authRef.current = auth; }, [auth]);
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -757,7 +766,41 @@ export default function App() {
 
   const showToast = (msg, color = T.accent) => { setToast({ msg, color }); setTimeout(() => setToast(null), 2500); };
 
-  const loadAll = useCallback(async (token, householdId) => {
+  // Garantiza un token válido: si está por expirar lo renueva automáticamente.
+  // Devuelve el token activo o null si la sesión no se puede recuperar.
+  const ensureToken = useCallback(async () => {
+    const cur = authRef.current;
+    if (!cur?.token) return null;
+    if (!isTokenExpired(cur.token)) return cur.token;
+
+    // Token expirado — intentar renovar con refresh_token
+    if (!cur.refreshToken) {
+      try { localStorage.removeItem("sp_session"); } catch {}
+      setAuth(null); setProfile(null); setProducts([]); setList([]); setHistory([]); setStores([]);
+      clearInterval(pollRef.current);
+      return null;
+    }
+    try {
+      const r = await authApi.signRefresh(cur.refreshToken);
+      if (r.access_token) {
+        const next = { token: r.access_token, refreshToken: r.refresh_token ?? cur.refreshToken, userId: cur.userId };
+        authRef.current = next;
+        setAuth(next);
+        try { localStorage.setItem("sp_session", JSON.stringify(next)); } catch {}
+        return next.token;
+      }
+    } catch (e) { console.error("Error renovando token:", e); }
+
+    // Renovación fallida — cerrar sesión
+    try { localStorage.removeItem("sp_session"); } catch {}
+    setAuth(null); setProfile(null); setProducts([]); setList([]); setHistory([]); setStores([]);
+    clearInterval(pollRef.current);
+    return null;
+  }, []);
+
+  const loadAll = useCallback(async (householdId) => {
+    const token = await ensureToken();
+    if (!token) return;
     try {
       const [st, pr, sl, hi] = await Promise.all([
         sbGet("stores", token, [`household_id=eq.${householdId}`], "*", "created_at.asc"),
@@ -768,12 +811,12 @@ export default function App() {
       setStores(st); setProducts(pr); setList(sl); setHistory(hi);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, []);
+  }, [ensureToken]);
 
   useEffect(() => {
     if (!auth || !profile) return;
-    loadAll(auth.token, profile.household_id);
-    pollRef.current = setInterval(() => loadAll(auth.token, profile.household_id), 8000);
+    loadAll(profile.household_id);
+    pollRef.current = setInterval(() => loadAll(profile.household_id), 8000);
     return () => clearInterval(pollRef.current);
   }, [auth, profile, loadAll]);
 
@@ -797,8 +840,11 @@ export default function App() {
     }
 
     if (profiles[0]) {
-      try { localStorage.setItem("sp_session", JSON.stringify({ token: activeToken, refreshToken, userId })); } catch(e) {}
-      setAuth({ token: activeToken, userId });
+      const finalRefresh = refreshToken; // puede haber sido actualizado en el bloque de refresh
+      const nextAuth = { token: activeToken, refreshToken: finalRefresh, userId };
+      authRef.current = nextAuth;
+      try { localStorage.setItem("sp_session", JSON.stringify(nextAuth)); } catch(e) {}
+      setAuth(nextAuth);
       setProfile(profiles[0]);
     } else {
       // No se encontró perfil — limpiar sesión y volver al login
@@ -860,46 +906,54 @@ export default function App() {
   });
 
   const toggleDone = async (item) => {
+    const token = await ensureToken();
+    if (!token) return;
     const newDone = !item.done;
     setList(p => p.map(i => i.id === item.id ? { ...i, done: newDone } : i));
-    await sbUpdate("shopping_list", auth.token, `id=eq.${item.id}`, { done: newDone, done_by: profile.id, done_at: newDone ? todayISO() : null });
+    await sbUpdate("shopping_list", token, `id=eq.${item.id}`, { done: newDone, done_by: profile.id, done_at: newDone ? todayISO() : null });
     if (newDone && item.product_id) {
       const hrow = { id: genId(), household_id: profile.household_id, product_id: item.product_id, purchased_by: profile.id, store_id: item.store_id, qty: item.qty, unit: item.unit, actual_price: item.estimated_price, purchased_at: todayISO() };
-      await sbInsert("purchase_history", auth.token, hrow);
+      await sbInsert("purchase_history", token, hrow);
       setHistory(h => [hrow, ...h]);
       showToast("✅ ¡Comprado!");
     }
   };
 
   const handleSaveNewProduct = async (prod) => {
-    await sbInsert("products", auth.token, prod);
+    const token = await ensureToken();
+    if (!token) return;
+    await sbInsert("products", token, prod);
     setProducts(p => [...p, prod]);
     const hrow = { id: genId(), household_id: profile.household_id, product_id: prod.id, purchased_by: profile.id, store_id: null, qty: prod.default_qty || 1, unit: prod.default_unit || "", actual_price: prod.avg_price, purchased_at: todayISO() };
-    await sbInsert("purchase_history", auth.token, hrow);
+    await sbInsert("purchase_history", token, hrow);
     setHistory(h => [hrow, ...h]);
     showToast(`✚ ${prod.name} guardado en catálogo`, T.accent2);
   };
 
   const handleQuickAdd = async ({ product, item, isNew }) => {
+    const token = await ensureToken();
+    if (!token) return;
     const fixedItem = { ...item, added_by: profile.id };
     if (isNew && product) {
-      await sbInsert("products", auth.token, product);
+      await sbInsert("products", token, product);
       setProducts(p => [...p, product]);
     }
-    await sbInsert("shopping_list", auth.token, fixedItem);
+    await sbInsert("shopping_list", token, fixedItem);
     setList(p => [fixedItem, ...p]);
     showToast(isNew ? "✚ Producto creado y agregado" : "✦ Agregado a la lista");
   };
 
   const handleTicketMatch = async (matched) => {
+    const token = await ensureToken();
+    if (!token) return;
     for (const item of matched) {
       const hrow = { id: genId(), household_id: profile.household_id, product_id: item.matched.id, purchased_by: profile.id, store_id: null, qty: item.qty, actual_price: item.price, purchased_at: todayISO() };
-      await sbInsert("purchase_history", auth.token, hrow);
+      await sbInsert("purchase_history", token, hrow);
       setHistory(h => [hrow, ...h]);
-      await sbUpdate("products", auth.token, `id=eq.${item.matched.id}`, { avg_price: item.price });
+      await sbUpdate("products", token, `id=eq.${item.matched.id}`, { avg_price: item.price });
       setProducts(p => p.map(pr => pr.id === item.matched.id ? { ...pr, avg_price: item.price } : pr));
       const listItem = list.find(i => i.product_id === item.matched.id && !i.done);
-      if (listItem) { await sbUpdate("shopping_list", auth.token, `id=eq.${listItem.id}`, { done: true, done_at: todayISO() }); setList(p => p.map(i => i.id === listItem.id ? { ...i, done: true } : i)); }
+      if (listItem) { await sbUpdate("shopping_list", token, `id=eq.${listItem.id}`, { done: true, done_at: todayISO() }); setList(p => p.map(i => i.id === listItem.id ? { ...i, done: true } : i)); }
     }
     showToast(`✦ ${matched.length} precios actualizados`, T.accent2);
   };
