@@ -922,12 +922,14 @@ export default function App() {
   const handleSaveNewProduct = async (prod) => {
     const token = await ensureToken();
     if (!token) return;
-    await sbInsert("products", token, prod);
-    setProducts(p => [...p, prod]);
-    const hrow = { id: genId(), household_id: profile.household_id, product_id: prod.id, purchased_by: profile.id, store_id: null, qty: prod.default_qty || 1, unit: prod.default_unit || "", actual_price: prod.avg_price, purchased_at: todayISO() };
+    // Esperar confirmación del insert antes de referenciar el producto en purchase_history
+    const savedProd = await sbInsert("products", token, prod);
+    if (!savedProd) { showToast("Error al guardar el producto", T.danger); return; }
+    setProducts(p => [...p, savedProd]);
+    const hrow = { id: genId(), household_id: profile.household_id, product_id: savedProd.id, purchased_by: profile.id, store_id: null, qty: savedProd.default_qty || 1, unit: savedProd.default_unit || "", actual_price: savedProd.avg_price, purchased_at: todayISO() };
     await sbInsert("purchase_history", token, hrow);
     setHistory(h => [hrow, ...h]);
-    showToast(`✚ ${prod.name} guardado en catálogo`, T.accent2);
+    showToast(`✚ ${savedProd.name} guardado en catálogo`, T.accent2);
   };
 
   const handleQuickAdd = async ({ product, item, isNew }) => {
@@ -935,8 +937,11 @@ export default function App() {
     if (!token) return;
     const fixedItem = { ...item, added_by: profile.id };
     if (isNew && product) {
-      await sbInsert("products", token, product);
-      setProducts(p => [...p, product]);
+      // Esperar confirmación del insert: shopping_list tiene FK a products.id
+      const savedProd = await sbInsert("products", token, product);
+      if (!savedProd) { showToast("Error al guardar el producto", T.danger); return; }
+      setProducts(p => [...p, savedProd]);
+      fixedItem.product_id = savedProd.id; // usar el id confirmado por Supabase
     }
     await sbInsert("shopping_list", token, fixedItem);
     setList(p => [fixedItem, ...p]);
