@@ -1159,12 +1159,21 @@ export default function App() {
                           {prod.avg_price && <Tag color={T.done} small>${prod.avg_price}</Tag>}
                           {pred && <Tag color={pred.daysUntil <= 7 ? T.warning : T.textMuted} small>~{pred.avgGap}d</Tag>}
                         </div>
-                        <Btn small color={T.accent} style={{ marginTop: "10px" }} onClick={async () => {
-                          const item = { id: genId(), product_id: prod.id, added_by: profile.id, store_id: prod.default_store_id, qty: prod.default_qty || 1, unit: prod.default_unit || "", estimated_price: prod.avg_price, notes: "", done: false, added_at: todayISO(), household_id: profile.household_id };
-                          await sbInsert("shopping_list", auth.token, item);
-                          setList(p => [item, ...p]);
-                          showToast(`✦ ${prod.name} agregado`);
-                        }}>+ Lista</Btn>
+                        <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
+                          <Btn small color={T.accent} style={{ flex: 1 }} onClick={async () => {
+                            const item = { id: genId(), product_id: prod.id, added_by: profile.id, store_id: prod.default_store_id, qty: prod.default_qty || 1, unit: prod.default_unit || "", estimated_price: prod.avg_price, notes: "", done: false, added_at: todayISO(), household_id: profile.household_id };
+                            await sbInsert("shopping_list", auth.token, item);
+                            setList(p => [item, ...p]);
+                            showToast(`✦ ${prod.name} agregado`);
+                          }}>+ Lista</Btn>
+                          <Btn small outline color={T.danger} onClick={async () => {
+                            const token = await ensureToken();
+                            if (!token) return;
+                            const ok = await sbDelete("products", token, `id=eq.${prod.id}`);
+                            if (ok) { setProducts(p => p.filter(i => i.id !== prod.id)); showToast(`🗑 ${prod.name} eliminado`, T.danger); }
+                            else showToast("No se puede eliminar — tiene historial asociado", T.warning);
+                          }}>🗑</Btn>
+                        </div>
                       </div>
                     );
                   })}
