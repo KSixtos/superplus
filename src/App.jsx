@@ -1161,31 +1161,30 @@ export default function App() {
                   <input placeholder="🔍 Buscar producto o marca..." value={catSearch} onChange={e => setCatSearch(e.target.value)}
                     style={{ width: "100%", background: T.card2, border: `1.5px solid ${catSearch ? T.accent2 : T.border}`, borderRadius: "10px", padding: "9px 12px", color: T.text, fontSize: "14px", outline: "none", boxSizing: "border-box", fontFamily: T.font, marginBottom: "10px", transition: "border-color 0.2s" }} />
 
-                  {/* Filtro por categoría */}
-                  {catUsedCats.length > 0 && (
-                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "8px" }}>
+                  {/* Filtro por categoría — siempre visible */}
+                  <div style={{ marginBottom: "6px" }}>
+                    <div style={{ fontSize: "10px", fontWeight: 700, color: T.textMuted, letterSpacing: "0.08em", marginBottom: "6px" }}>CATEGORÍA</div>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                       <button onClick={() => setCatFilterCat("all")} style={{ background: catFilterCat === "all" ? T.accent2 + "30" : "transparent", color: catFilterCat === "all" ? T.accent2 : T.textMuted, border: `1.5px solid ${catFilterCat === "all" ? T.accent2 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>Todas</button>
-                      {catUsedCats.map(cid => {
-                        const c = getCat(cid);
-                        if (!c) return null;
-                        const active = catFilterCat === cid;
-                        return <button key={cid} onClick={() => setCatFilterCat(active ? "all" : cid)} style={{ background: active ? T.accent2 + "30" : "transparent", color: active ? T.accent2 : T.textMuted, border: `1.5px solid ${active ? T.accent2 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>{c.emoji} {c.label}</button>;
+                      {CATEGORIES.map(c => {
+                        const active = catFilterCat === c.id;
+                        return <button key={c.id} onClick={() => setCatFilterCat(active ? "all" : c.id)} style={{ background: active ? T.accent2 + "30" : "transparent", color: active ? T.accent2 : T.textMuted, border: `1.5px solid ${active ? T.accent2 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>{c.emoji} {c.label}</button>;
                       })}
                     </div>
-                  )}
+                  </div>
 
-                  {/* Filtro por tienda */}
-                  {catUsedStores.length > 0 && (
-                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "14px" }}>
-                      <button onClick={() => setCatFilterStore("all")} style={{ background: catFilterStore === "all" ? T.accent3 + "30" : "transparent", color: catFilterStore === "all" ? T.accent3 : T.textMuted, border: `1.5px solid ${catFilterStore === "all" ? T.accent3 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>Todas las tiendas</button>
-                      {catUsedStores.map(sid => {
-                        const s = getStore(sid);
-                        if (!s) return null;
-                        const active = catFilterStore === sid;
-                        return <button key={sid} onClick={() => setCatFilterStore(active ? "all" : sid)} style={{ background: active ? s.color + "25" : "transparent", color: active ? s.color : T.textMuted, border: `1.5px solid ${active ? s.color : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>{s.emoji} {s.name}</button>;
+                  {/* Filtro por tienda — siempre visible si hay tiendas */}
+                  <div style={{ marginBottom: "14px", marginTop: "10px" }}>
+                    <div style={{ fontSize: "10px", fontWeight: 700, color: T.textMuted, letterSpacing: "0.08em", marginBottom: "6px" }}>TIENDA</div>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      <button onClick={() => setCatFilterStore("all")} style={{ background: catFilterStore === "all" ? T.accent3 + "30" : "transparent", color: catFilterStore === "all" ? T.accent3 : T.textMuted, border: `1.5px solid ${catFilterStore === "all" ? T.accent3 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>Todas</button>
+                      {stores.map(s => {
+                        const active = catFilterStore === s.id;
+                        return <button key={s.id} onClick={() => setCatFilterStore(active ? "all" : s.id)} style={{ background: active ? s.color + "25" : "transparent", color: active ? s.color : T.textMuted, border: `1.5px solid ${active ? s.color : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>{s.emoji} {s.name}</button>;
                       })}
+                      {stores.length === 0 && <span style={{ color: T.textFaint, fontSize: "12px" }}>Sin tiendas — agrégalas en la pestaña Tiendas</span>}
                     </div>
-                  )}
+                  </div>
 
                   {/* Grid de productos */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
