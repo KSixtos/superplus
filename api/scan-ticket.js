@@ -29,12 +29,26 @@
             },
             {
               type: "text",
-              text: `Eres un asistente experto en leer tickets de supermercado mexicanos. Analiza esta imagen y extrae TODOS los productos.
+              text: `Eres un asistente experto en leer tickets de supermercado mexicanos. Analiza esta imagen y extrae TODOS los productos comprados.
 
-REGLA DE DESCUENTOS (muy importante):
-- Si una línea inmediatamente después de un producto dice "DESCUENTO", "DESC", "AHORRO", "PROMO" y tiene un monto con signo negativo (-) o símbolo de resta, ese monto se resta al precio del producto anterior.
-- El campo "discount" debe tener el valor ABSOLUTO del descuento (número positivo). Si no hay descuento, pon 0.
-- El campo "price" siempre es el precio ORIGINAL antes del descuento.
+═══ REGLA DE DESCUENTOS (crítica) ═══
+En tickets mexicanos, los descuentos aparecen en la línea INMEDIATAMENTE DESPUÉS del producto con palabras como:
+  DESCUENTO, DESC, AHORRO, PROMO, OFERTA, BONIF, DTO, PRECIO ESPECIAL
+y el monto aparece con signo negativo: -15.00, -$15.00, $ -15.00, (15.00), etc.
+
+CÓMO PROCESARLOS:
+1. Lee el producto y su precio normal → "COCA COLA 2L  32.00"
+2. Lee la siguiente línea → "DESCUENTO  -8.00"
+3. Registra el producto con: price=32.00, discount=8.00
+4. NO incluyas la línea del descuento como producto separado
+5. Si hay múltiples descuentos seguidos para el mismo producto, suma todos
+
+EJEMPLOS de líneas de descuento que debes reconocer:
+  "AHORRO         -15.50"
+  "DESC LEALTAD   -5.00"
+  "PROMO 2X1      -32.00"
+  "DESCUENTO       -8.00"
+  "DTO CLIENTE     -3.50"
 
 Mi catálogo de productos conocidos:
 ${productList}
@@ -44,13 +58,13 @@ Categorías disponibles: ${categorias}
 Responde SOLO con JSON válido sin texto adicional ni markdown:
 {"items":[{"name":"nombre en ticket","price":00.00,"qty":1,"discount":0.00,"matched":"nombre exacto del catálogo o null","category":"categoria_sugerida"}]}
 
-Reglas adicionales:
-- price es precio UNITARIO original
-- qty es cantidad comprada
-- discount es el descuento aplicado (número positivo, 0 si no hay)
-- matched: nombre EXACTO de mi catálogo si es el mismo producto, null si no
-- category: elige la más apropiada según el nombre del producto
-- NO incluyas líneas que sean solo descuentos, impuestos, subtotales o totales`
+Reglas:
+- price: precio UNITARIO ORIGINAL (sin restar descuento)
+- discount: valor ABSOLUTO del descuento (positivo, 0 si no hay)
+- qty: cantidad comprada
+- matched: nombre EXACTO del catálogo si coincide, si no null
+- category: la más apropiada para el producto
+- NO incluyas filas de impuestos, subtotales, totales ni cambio`
             }
           ]
         }]

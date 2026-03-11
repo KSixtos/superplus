@@ -519,12 +519,12 @@ function TicketScanner({ products, householdId, onMatch, onSaveNewProduct, onClo
         default_store_id: null,
         category: newProdForm.category,
         barcode: null,
-        avg_price: unmatched[newProdIdx].price,
+        avg_price: unmatched[newProdIdx].price - (unmatched[newProdIdx].discount || 0),
         household_id: householdId,
       };
       const histEntry = {
         productId: newProd.id,
-        price: unmatched[newProdIdx].price,
+        price: unmatched[newProdIdx].price - (unmatched[newProdIdx].discount || 0),
         qty: unmatched[newProdIdx].qty,
       };
       setSavedNewProds(p => [...p, { prod: newProd, hist: histEntry }]);
@@ -952,10 +952,11 @@ export default function App() {
     const token = await ensureToken();
     if (!token) return;
     for (const item of matched) {
-      const hrow = { id: genId(), household_id: profile.household_id, product_id: item.matched.id, purchased_by: profile.id, store_id: null, qty: item.qty, actual_price: item.price, purchased_at: todayISO() };
+      const finalPrice = item.price - (item.discount || 0);
+      const hrow = { id: genId(), household_id: profile.household_id, product_id: item.matched.id, purchased_by: profile.id, store_id: null, qty: item.qty, actual_price: finalPrice, purchased_at: todayISO() };
       await sbInsert("purchase_history", token, hrow);
       setHistory(h => [hrow, ...h]);
-      await sbUpdate("products", token, `id=eq.${item.matched.id}`, { avg_price: item.price });
+      await sbUpdate("products", token, `id=eq.${item.matched.id}`, { avg_price: finalPrice });
       setProducts(p => p.map(pr => pr.id === item.matched.id ? { ...pr, avg_price: item.price } : pr));
       const listItem = list.find(i => i.product_id === item.matched.id && !i.done);
       if (listItem) { await sbUpdate("shopping_list", token, `id=eq.${listItem.id}`, { done: true, done_at: todayISO() }); setList(p => p.map(i => i.id === listItem.id ? { ...i, done: true } : i)); }
