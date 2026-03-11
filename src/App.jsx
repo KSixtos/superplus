@@ -26,6 +26,10 @@ async function sbInsert(table, token, body) {
     body: JSON.stringify(body),
   });
   const data = await r.json();
+  if (!r.ok) {
+    console.error(`[sbInsert] Error en tabla "${table}":`, JSON.stringify(data), "\nPayload:", JSON.stringify(body));
+    return null;
+  }
   return Array.isArray(data) ? data[0] : data;
 }
 
@@ -56,6 +60,13 @@ const authApi = {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
       body: JSON.stringify({ email, password }),
+    });
+    return r.json();
+  },
+  async signRefresh(refreshToken) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify({ refresh_token: refreshToken }),
     });
     return r.json();
   },
@@ -180,24 +191,35 @@ function AuthScreen({ onAuth }) {
       if (mode === "login") {
         const res = await authApi.signIn(email, password);
         if (res.access_token) {
-          onAuth({ token: res.access_token, userId: res.user.id });
+          onAuth({ token: res.access_token, refreshToken: res.refresh_token, userId: res.user.id });
         } else {
           setMsg("❌ " + (res.error_description || "Credenciales incorrectas"));
         }
       } else {
         const res = await authApi.signUp(email, password);
-        if (res.user) {
+        // Supabase devuelve { user, access_token } sin confirmación de email,
+        // o { id, email, confirmation_sent_at } con confirmación requerida.
+        const signupUser = res.user || (res.id && !res.error ? res : null);
+        if (signupUser) {
           const token = res.access_token || SUPABASE_ANON_KEY;
-          const userId = res.user.id;
+          const userId = signupUser.id;
           let hId = householdId;
           if (joinMode === "create") {
             const h = await sbInsert("households", token, { id: genId(), name: householdName || "Mi Casa" });
-            hId = h?.id;
+            if (!h?.id) {
+              setMsg("❌ Error al crear el hogar. Verifica la configuración de Supabase.");
+              setLoading(false); return;
+            }
+            hId = h.id;
           }
-          await sbInsert("profiles", token, { id: userId, household_id: hId, display_name: name || email.split("@")[0], avatar_emoji: "🙋‍♀️" });
-          setMsg("✅ Cuenta creada. Confirma tu email y luego inicia sesión.");
+          const profileResult = await sbInsert("profiles", token, { id: userId, household_id: hId, display_name: name || email.split("@")[0], avatar_emoji: "🙋‍♀️" });
+          if (!profileResult) {
+            setMsg("❌ Error al crear el perfil. Verifica la configuración de Supabase.");
+            setLoading(false); return;
+          }
+          setMsg("✅ Cuenta creada. " + (res.access_token ? "¡Ya puedes entrar!" : "Confirma tu email y luego inicia sesión."));
         } else {
-          setMsg("❌ " + (res.error_description || "Algo salió mal"));
+          setMsg("❌ " + (res.error_description || res.msg || "Algo salió mal"));
         }
       }
     } catch (e) { setMsg("❌ Error de conexión"); }
@@ -724,8 +746,8 @@ export default function App() {
     try {
       const saved = localStorage.getItem("sp_session");
       if (saved) {
-        const { token, userId } = JSON.parse(saved);
-        if (token && userId) handleAuth({ token, userId });
+        const { token, refreshToken, userId } = JSON.parse(saved);
+        if (token && userId) handleAuth({ token, refreshToken, userId }, true);
         else setLoading(false);
       } else {
         setLoading(false);
@@ -755,14 +777,35 @@ export default function App() {
     return () => clearInterval(pollRef.current);
   }, [auth, profile, loadAll]);
 
-  const handleAuth = async ({ token, userId }) => {
-    try {
-      localStorage.setItem("sp_session", JSON.stringify({ token, userId }));
-    } catch(e) {}
-    setAuth({ token, userId });
-    const profiles = await sbGet("profiles", token, [`id=eq.${userId}`]);
-    if (profiles[0]) setProfile(profiles[0]);
-    else setLoading(false);
+  const handleAuth = async ({ token, refreshToken, userId }, fromStorage = false) => {
+    // Intenta obtener el perfil con el token actual
+    let activeToken = token;
+    let profiles = await sbGet("profiles", token, [`id=eq.${userId}`]);
+
+    // Si el token expiró y tenemos refresh_token, intentar renovar
+    if (!profiles[0] && fromStorage && refreshToken) {
+      try {
+        const refreshed = await authApi.signRefresh(refreshToken);
+        if (refreshed.access_token) {
+          activeToken = refreshed.access_token;
+          const newRefresh = refreshed.refresh_token || refreshToken;
+          profiles = await sbGet("profiles", activeToken, [`id=eq.${userId}`]);
+          // Actualizar tokens guardados
+          try { localStorage.setItem("sp_session", JSON.stringify({ token: activeToken, refreshToken: newRefresh, userId })); } catch(e) {}
+        }
+      } catch(e) { console.error("Error al renovar sesión:", e); }
+    }
+
+    if (profiles[0]) {
+      try { localStorage.setItem("sp_session", JSON.stringify({ token: activeToken, refreshToken, userId })); } catch(e) {}
+      setAuth({ token: activeToken, userId });
+      setProfile(profiles[0]);
+    } else {
+      // No se encontró perfil — limpiar sesión y volver al login
+      try { localStorage.removeItem("sp_session"); } catch(e) {}
+      setAuth(null);
+      setLoading(false);
+    }
   };
 
   const handleLogout = () => {
@@ -838,12 +881,13 @@ export default function App() {
   };
 
   const handleQuickAdd = async ({ product, item, isNew }) => {
+    const fixedItem = { ...item, added_by: profile.id };
     if (isNew && product) {
       await sbInsert("products", auth.token, product);
       setProducts(p => [...p, product]);
     }
-    await sbInsert("shopping_list", auth.token, item);
-    setList(p => [item, ...p]);
+    await sbInsert("shopping_list", auth.token, fixedItem);
+    setList(p => [fixedItem, ...p]);
     showToast(isNew ? "✚ Producto creado y agregado" : "✦ Agregado a la lista");
   };
 
