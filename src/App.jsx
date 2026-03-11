@@ -748,6 +748,7 @@ export default function App() {
   const [catSearch, setCatSearch] = useState("");
   const [catFilterCat, setCatFilterCat] = useState("all");
   const [catFilterStore, setCatFilterStore] = useState("all");
+  const [editingProd, setEditingProd] = useState(null);
   const [shoppingMode, setShoppingMode] = useState(false);
   const pollRef = useRef(null);
   const authRef = useRef(null); // siempre tiene el auth más reciente sin stale closures
@@ -1186,42 +1187,54 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Grid de productos */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
-                    {catFiltered.map(prod => {
-                      const cat = getCat(prod.category);
-                      const store = getStore(prod.default_store_id);
-                      const pred = predictNext(purchaseDatesByProduct[prod.id]);
-                      return (
-                        <div key={prod.id} className="icard" style={{ background: T.card, borderRadius: "14px", padding: "15px", border: `1.5px solid ${T.border}` }}>
-                          <div style={{ fontWeight: 700, fontSize: "15px" }}>{prod.name}</div>
-                          {prod.brand && <div style={{ color: T.textMuted, fontSize: "12px", marginTop: "2px" }}>{prod.brand}{prod.presentation && ` · ${prod.presentation}`}</div>}
-                          <div style={{ display: "flex", gap: "4px", marginTop: "8px", flexWrap: "wrap" }}>
-                            {cat && <Tag color={T.accent2} small>{cat.emoji} {cat.label}</Tag>}
-                            {store && <Tag color={store.color} small>{store.emoji} {store.name}</Tag>}
-                            {prod.avg_price && <Tag color={T.done} small>${prod.avg_price}</Tag>}
-                            {pred && <Tag color={pred.daysUntil <= 7 ? T.warning : T.textMuted} small>~{pred.avgGap}d</Tag>}
-                          </div>
-                          <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
-                            <Btn small color={T.accent} style={{ flex: 1 }} onClick={async () => {
-                              const item = { id: genId(), product_id: prod.id, added_by: profile.id, store_id: prod.default_store_id, qty: prod.default_qty || 1, unit: prod.default_unit || "", estimated_price: prod.avg_price, notes: "", done: false, added_at: todayISO(), household_id: profile.household_id };
-                              await sbInsert("shopping_list", auth.token, item);
-                              setList(p => [item, ...p]);
-                              showToast(`✦ ${prod.name} agregado`);
-                            }}>+ Lista</Btn>
-                            <Btn small outline color={T.danger} onClick={async () => {
-                              const token = await ensureToken();
-                              if (!token) return;
-                              const ok = await sbDelete("products", token, `id=eq.${prod.id}`);
-                              if (ok) { setProducts(p => p.filter(i => i.id !== prod.id)); showToast(`🗑 ${prod.name} eliminado`, T.danger); }
-                              else showToast("No se puede eliminar — tiene historial asociado", T.warning);
-                            }}>🗑</Btn>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  {/* Tabla de productos */}
+                  <div style={{ overflowX: "auto", borderRadius: "12px", border: `1.5px solid ${T.border}` }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: T.font, fontSize: "13px" }}>
+                      <thead>
+                        <tr style={{ background: T.card2 }}>
+                          {["Producto", "Marca", "Categoría", "Tienda", "Precio", "Acciones"].map(h => (
+                            <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: "11px", color: T.textMuted, letterSpacing: "0.07em", textTransform: "uppercase", whiteSpace: "nowrap", borderBottom: `1px solid ${T.border}` }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {catFiltered.map((prod, i) => {
+                          const cat = getCat(prod.category);
+                          const store = getStore(prod.default_store_id);
+                          return (
+                            <tr key={prod.id} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 === 0 ? T.card : T.card2, transition: "background 0.15s" }}
+                              onMouseEnter={e => e.currentTarget.style.background = T.card3}
+                              onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? T.card : T.card2}>
+                              <td style={{ padding: "10px 14px", fontWeight: 700, color: T.text }}>{prod.name}</td>
+                              <td style={{ padding: "10px 14px", color: T.textMuted }}>{prod.brand || <span style={{ color: T.textFaint }}>—</span>}</td>
+                              <td style={{ padding: "10px 14px" }}>{cat ? <Tag color={T.accent2} small>{cat.emoji} {cat.label}</Tag> : <span style={{ color: T.textFaint }}>—</span>}</td>
+                              <td style={{ padding: "10px 14px" }}>{store ? <Tag color={store.color} small>{store.emoji} {store.name}</Tag> : <span style={{ color: T.textFaint }}>—</span>}</td>
+                              <td style={{ padding: "10px 14px", color: prod.avg_price ? T.done : T.textFaint, fontWeight: prod.avg_price ? 700 : 400 }}>{prod.avg_price ? `$${prod.avg_price}` : "—"}</td>
+                              <td style={{ padding: "10px 14px" }}>
+                                <div style={{ display: "flex", gap: "5px" }}>
+                                  <Btn small color={T.accent} onClick={async () => {
+                                    const item = { id: genId(), product_id: prod.id, added_by: profile.id, store_id: prod.default_store_id, qty: prod.default_qty || 1, unit: prod.default_unit || "", estimated_price: prod.avg_price, notes: "", done: false, added_at: todayISO(), household_id: profile.household_id };
+                                    await sbInsert("shopping_list", auth.token, item);
+                                    setList(p => [item, ...p]);
+                                    showToast(`✦ ${prod.name} agregado`);
+                                  }}>+ Lista</Btn>
+                                  <Btn small outline color={T.accent2} onClick={() => setEditingProd({ ...prod })}>✏️</Btn>
+                                  <Btn small outline color={T.danger} onClick={async () => {
+                                    const token = await ensureToken();
+                                    if (!token) return;
+                                    const ok = await sbDelete("products", token, `id=eq.${prod.id}`);
+                                    if (ok) { setProducts(p => p.filter(i => i.id !== prod.id)); showToast(`🗑 ${prod.name} eliminado`, T.danger); }
+                                    else showToast("No se puede eliminar — tiene historial asociado", T.warning);
+                                  }}>🗑</Btn>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                     {catFiltered.length === 0 && (
-                      <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "50px", color: T.textMuted }}>
+                      <div style={{ textAlign: "center", padding: "50px", color: T.textMuted }}>
                         <div style={{ fontSize: "40px", marginBottom: "10px" }}>{products.length === 0 ? "📦" : "🔍"}</div>
                         <div style={{ fontWeight: 700 }}>{products.length === 0 ? "Sin productos aún" : "Sin resultados"}</div>
                         <div style={{ fontSize: "13px", marginTop: "4px" }}>{products.length === 0 ? "Agrega el primero con + Nuevo" : "Prueba con otros filtros"}</div>
@@ -1399,6 +1412,48 @@ export default function App() {
           showToast(`🏪 ${store.name} agregada`);
           setModal(null);
         }} onClose={() => setModal(null)} />
+      </Modal>
+
+      {/* MODAL EDITAR PRODUCTO */}
+      <Modal open={!!editingProd} onClose={() => setEditingProd(null)} title="✏️ Editar producto" color={T.accent2}>
+        {editingProd && (
+          <div>
+            <FInput label="Nombre *" value={editingProd.name} onChange={e => setEditingProd(p => ({ ...p, name: e.target.value }))} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <FInput label="Marca" placeholder="Opcional" value={editingProd.brand || ""} onChange={e => setEditingProd(p => ({ ...p, brand: e.target.value }))} />
+              <FInput label="Presentación" placeholder="1L, 500g…" value={editingProd.presentation || ""} onChange={e => setEditingProd(p => ({ ...p, presentation: e.target.value }))} />
+            </div>
+            <FSelect label="Categoría" value={editingProd.category || ""} onChange={e => setEditingProd(p => ({ ...p, category: e.target.value }))}>
+              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+            </FSelect>
+            <FSelect label="Tienda preferida" value={editingProd.default_store_id || ""} onChange={e => setEditingProd(p => ({ ...p, default_store_id: e.target.value || null }))}>
+              <option value="">— Sin tienda —</option>
+              {stores.map(s => <option key={s.id} value={s.id}>{s.emoji} {s.name}</option>)}
+            </FSelect>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+              <FInput label="Cant. default" type="number" value={editingProd.default_qty || 1} onChange={e => setEditingProd(p => ({ ...p, default_qty: parseFloat(e.target.value) || 1 }))} />
+              <FInput label="Unidad" placeholder="kg, lt, pz…" value={editingProd.default_unit || ""} onChange={e => setEditingProd(p => ({ ...p, default_unit: e.target.value }))} />
+              <FInput label="Precio prom. $" type="number" value={editingProd.avg_price || ""} onChange={e => setEditingProd(p => ({ ...p, avg_price: e.target.value ? parseFloat(e.target.value) : null }))} />
+            </div>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "6px" }}>
+              <Btn outline color={T.textMuted} onClick={() => setEditingProd(null)}>Cancelar</Btn>
+              <Btn color={T.accent2} onClick={async () => {
+                if (!editingProd.name.trim()) return;
+                const token = await ensureToken();
+                if (!token) return;
+                const { id, household_id, ...fields } = editingProd;
+                const ok = await sbUpdate("products", token, `id=eq.${id}`, fields);
+                if (ok) {
+                  setProducts(p => p.map(x => x.id === id ? { ...editingProd } : x));
+                  showToast(`✅ ${editingProd.name} actualizado`, T.accent2);
+                  setEditingProd(null);
+                } else {
+                  showToast("Error al guardar cambios", T.danger);
+                }
+              }}>💾 Guardar</Btn>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
