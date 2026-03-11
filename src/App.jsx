@@ -318,7 +318,7 @@ function QuickAddForm({ products, stores, householdId, onSave, onClose }) {
 
   const handleSave = (isNew) => {
     const prodId = isNew ? genId() : selected?.id;
-    const newProd = isNew ? { id: prodId, name: newName, brand: newBrand, presentation: "", default_qty: parseFloat(qty) || 1, default_unit: unit, default_store_id: storeId || null, category: newCat, barcode: "", avg_price: price ? parseFloat(price) : null, household_id: householdId } : null;
+    const newProd = isNew ? { id: prodId, name: newName, brand: newBrand, presentation: "", default_qty: parseFloat(qty) || 1, default_unit: unit, default_store_id: storeId || null, category: newCat, barcode: null, avg_price: price ? parseFloat(price) : null, household_id: householdId } : null;
     const item = { id: genId(), product_id: prodId, added_by: addedBy, store_id: storeId || null, qty: parseFloat(qty) || 1, unit, estimated_price: price ? parseFloat(price) : null, notes, done: false, added_at: todayISO(), household_id: householdId };
     onSave({ product: newProd, item, isNew });
     onClose();
@@ -518,7 +518,7 @@ function TicketScanner({ products, householdId, onMatch, onSaveNewProduct, onClo
         default_unit: "",
         default_store_id: null,
         category: newProdForm.category,
-        barcode: "",
+        barcode: null,
         avg_price: unmatched[newProdIdx].price,
         household_id: householdId,
       };
