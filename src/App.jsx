@@ -745,6 +745,9 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [filterStore, setFilterStore] = useState("all");
   const [filterCat, setFilterCat] = useState("all");
+  const [catSearch, setCatSearch] = useState("");
+  const [catFilterCat, setCatFilterCat] = useState("all");
+  const [catFilterStore, setCatFilterStore] = useState("all");
   const [shoppingMode, setShoppingMode] = useState(false);
   const pollRef = useRef(null);
   const authRef = useRef(null); // siempre tiene el auth más reciente sin stale closures
@@ -1137,54 +1140,98 @@ export default function App() {
             )}
 
             {/* ── CATÁLOGO ── */}
-            {tab === "catalogo" && (
-              <div style={{ animation: "pop 0.2s ease" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                  <div><h2 style={{ fontWeight: 800, fontSize: "22px", color: T.accent2 }}>Catálogo 📦</h2><p style={{ color: T.textMuted, fontSize: "13px", marginTop: "3px" }}>Configura una vez, usa siempre</p></div>
-                  <Btn small color={T.accent2} onClick={() => setModal("quickAdd")}>+ Nuevo</Btn>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
-                  {products.map(prod => {
-                    const cat = getCat(prod.category);
-                    const store = getStore(prod.default_store_id);
-                    const pred = predictNext(purchaseDatesByProduct[prod.id]);
-                    return (
-                      <div key={prod.id} className="icard" style={{ background: T.card, borderRadius: "14px", padding: "15px", border: `1.5px solid ${T.border}` }}>
-                        <div style={{ fontWeight: 700, fontSize: "15px" }}>{prod.name}</div>
-                        {prod.brand && <div style={{ color: T.textMuted, fontSize: "12px", marginTop: "2px" }}>{prod.brand}{prod.presentation && ` · ${prod.presentation}`}</div>}
-                        {prod.barcode && <div style={{ color: T.textFaint, fontSize: "11px", marginTop: "2px" }}>📦 {prod.barcode}</div>}
-                        <div style={{ display: "flex", gap: "4px", marginTop: "8px", flexWrap: "wrap" }}>
-                          {cat && <Tag color={T.accent} small>{cat.emoji}</Tag>}
-                          {store && <Tag color={store.color} small>{store.emoji}</Tag>}
-                          {prod.avg_price && <Tag color={T.done} small>${prod.avg_price}</Tag>}
-                          {pred && <Tag color={pred.daysUntil <= 7 ? T.warning : T.textMuted} small>~{pred.avgGap}d</Tag>}
+            {tab === "catalogo" && (() => {
+              const catUsedCats = [...new Set(products.map(p => p.category).filter(Boolean))];
+              const catUsedStores = [...new Set(products.map(p => p.default_store_id).filter(Boolean))];
+              const catFiltered = products.filter(p => {
+                if (catFilterCat !== "all" && p.category !== catFilterCat) return false;
+                if (catFilterStore !== "all" && p.default_store_id !== catFilterStore) return false;
+                if (catSearch && !p.name.toLowerCase().includes(catSearch.toLowerCase()) && !(p.brand || "").toLowerCase().includes(catSearch.toLowerCase())) return false;
+                return true;
+              });
+              return (
+                <div style={{ animation: "pop 0.2s ease" }}>
+                  {/* Header */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                    <div><h2 style={{ fontWeight: 800, fontSize: "22px", color: T.accent2 }}>Catálogo 📦</h2><p style={{ color: T.textMuted, fontSize: "13px", marginTop: "2px" }}>{products.length} productos</p></div>
+                    <Btn small color={T.accent2} onClick={() => setModal("quickAdd")}>+ Nuevo</Btn>
+                  </div>
+
+                  {/* Búsqueda */}
+                  <input placeholder="🔍 Buscar producto o marca..." value={catSearch} onChange={e => setCatSearch(e.target.value)}
+                    style={{ width: "100%", background: T.card2, border: `1.5px solid ${catSearch ? T.accent2 : T.border}`, borderRadius: "10px", padding: "9px 12px", color: T.text, fontSize: "14px", outline: "none", boxSizing: "border-box", fontFamily: T.font, marginBottom: "10px", transition: "border-color 0.2s" }} />
+
+                  {/* Filtro por categoría */}
+                  {catUsedCats.length > 0 && (
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "8px" }}>
+                      <button onClick={() => setCatFilterCat("all")} style={{ background: catFilterCat === "all" ? T.accent2 + "30" : "transparent", color: catFilterCat === "all" ? T.accent2 : T.textMuted, border: `1.5px solid ${catFilterCat === "all" ? T.accent2 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>Todas</button>
+                      {catUsedCats.map(cid => {
+                        const c = getCat(cid);
+                        if (!c) return null;
+                        const active = catFilterCat === cid;
+                        return <button key={cid} onClick={() => setCatFilterCat(active ? "all" : cid)} style={{ background: active ? T.accent2 + "30" : "transparent", color: active ? T.accent2 : T.textMuted, border: `1.5px solid ${active ? T.accent2 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>{c.emoji} {c.label}</button>;
+                      })}
+                    </div>
+                  )}
+
+                  {/* Filtro por tienda */}
+                  {catUsedStores.length > 0 && (
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "14px" }}>
+                      <button onClick={() => setCatFilterStore("all")} style={{ background: catFilterStore === "all" ? T.accent3 + "30" : "transparent", color: catFilterStore === "all" ? T.accent3 : T.textMuted, border: `1.5px solid ${catFilterStore === "all" ? T.accent3 : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>Todas las tiendas</button>
+                      {catUsedStores.map(sid => {
+                        const s = getStore(sid);
+                        if (!s) return null;
+                        const active = catFilterStore === sid;
+                        return <button key={sid} onClick={() => setCatFilterStore(active ? "all" : sid)} style={{ background: active ? s.color + "25" : "transparent", color: active ? s.color : T.textMuted, border: `1.5px solid ${active ? s.color : T.border}`, borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>{s.emoji} {s.name}</button>;
+                      })}
+                    </div>
+                  )}
+
+                  {/* Grid de productos */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
+                    {catFiltered.map(prod => {
+                      const cat = getCat(prod.category);
+                      const store = getStore(prod.default_store_id);
+                      const pred = predictNext(purchaseDatesByProduct[prod.id]);
+                      return (
+                        <div key={prod.id} className="icard" style={{ background: T.card, borderRadius: "14px", padding: "15px", border: `1.5px solid ${T.border}` }}>
+                          <div style={{ fontWeight: 700, fontSize: "15px" }}>{prod.name}</div>
+                          {prod.brand && <div style={{ color: T.textMuted, fontSize: "12px", marginTop: "2px" }}>{prod.brand}{prod.presentation && ` · ${prod.presentation}`}</div>}
+                          <div style={{ display: "flex", gap: "4px", marginTop: "8px", flexWrap: "wrap" }}>
+                            {cat && <Tag color={T.accent2} small>{cat.emoji} {cat.label}</Tag>}
+                            {store && <Tag color={store.color} small>{store.emoji} {store.name}</Tag>}
+                            {prod.avg_price && <Tag color={T.done} small>${prod.avg_price}</Tag>}
+                            {pred && <Tag color={pred.daysUntil <= 7 ? T.warning : T.textMuted} small>~{pred.avgGap}d</Tag>}
+                          </div>
+                          <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
+                            <Btn small color={T.accent} style={{ flex: 1 }} onClick={async () => {
+                              const item = { id: genId(), product_id: prod.id, added_by: profile.id, store_id: prod.default_store_id, qty: prod.default_qty || 1, unit: prod.default_unit || "", estimated_price: prod.avg_price, notes: "", done: false, added_at: todayISO(), household_id: profile.household_id };
+                              await sbInsert("shopping_list", auth.token, item);
+                              setList(p => [item, ...p]);
+                              showToast(`✦ ${prod.name} agregado`);
+                            }}>+ Lista</Btn>
+                            <Btn small outline color={T.danger} onClick={async () => {
+                              const token = await ensureToken();
+                              if (!token) return;
+                              const ok = await sbDelete("products", token, `id=eq.${prod.id}`);
+                              if (ok) { setProducts(p => p.filter(i => i.id !== prod.id)); showToast(`🗑 ${prod.name} eliminado`, T.danger); }
+                              else showToast("No se puede eliminar — tiene historial asociado", T.warning);
+                            }}>🗑</Btn>
+                          </div>
                         </div>
-                        <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
-                          <Btn small color={T.accent} style={{ flex: 1 }} onClick={async () => {
-                            const item = { id: genId(), product_id: prod.id, added_by: profile.id, store_id: prod.default_store_id, qty: prod.default_qty || 1, unit: prod.default_unit || "", estimated_price: prod.avg_price, notes: "", done: false, added_at: todayISO(), household_id: profile.household_id };
-                            await sbInsert("shopping_list", auth.token, item);
-                            setList(p => [item, ...p]);
-                            showToast(`✦ ${prod.name} agregado`);
-                          }}>+ Lista</Btn>
-                          <Btn small outline color={T.danger} onClick={async () => {
-                            const token = await ensureToken();
-                            if (!token) return;
-                            const ok = await sbDelete("products", token, `id=eq.${prod.id}`);
-                            if (ok) { setProducts(p => p.filter(i => i.id !== prod.id)); showToast(`🗑 ${prod.name} eliminado`, T.danger); }
-                            else showToast("No se puede eliminar — tiene historial asociado", T.warning);
-                          }}>🗑</Btn>
-                        </div>
+                      );
+                    })}
+                    {catFiltered.length === 0 && (
+                      <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "50px", color: T.textMuted }}>
+                        <div style={{ fontSize: "40px", marginBottom: "10px" }}>{products.length === 0 ? "📦" : "🔍"}</div>
+                        <div style={{ fontWeight: 700 }}>{products.length === 0 ? "Sin productos aún" : "Sin resultados"}</div>
+                        <div style={{ fontSize: "13px", marginTop: "4px" }}>{products.length === 0 ? "Agrega el primero con + Nuevo" : "Prueba con otros filtros"}</div>
                       </div>
-                    );
-                  })}
-                  {products.length === 0 && <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "50px", color: T.textMuted }}>
-                    <div style={{ fontSize: "40px", marginBottom: "10px" }}>📦</div>
-                    <div style={{ fontWeight: 700 }}>Sin productos aún</div>
-                    <div style={{ fontSize: "13px", marginTop: "4px" }}>Agrega el primero con el botón ＋ Agregar</div>
-                  </div>}
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ── TIENDAS ── */}
             {tab === "tiendas" && (
